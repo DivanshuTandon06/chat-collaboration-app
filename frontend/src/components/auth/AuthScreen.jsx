@@ -13,6 +13,11 @@ export const AuthScreen = () => {
   const [email, setEmail] = useState('');
   const [fullName, setFullName] = useState('');
 
+  const handleFieldChange = (setValue) => (e) => {
+    setValue(e.target.value);
+    if (error) setError(null);
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError(null);
@@ -116,7 +121,7 @@ export const AuthScreen = () => {
                   placeholder="e.g. Your Name"
                   autoComplete="name"
                   value={fullName}
-                  onChange={(e) => setFullName(e.target.value)}
+                  onChange={handleFieldChange(setFullName)}
                   required
                 />
               </div>
@@ -129,7 +134,7 @@ export const AuthScreen = () => {
                   placeholder="e.g. username"
                   autoComplete="username"
                   value={username}
-                  onChange={(e) => setUsername(e.target.value)}
+                  onChange={handleFieldChange(setUsername)}
                   minLength={3}
                   required
                 />
@@ -143,7 +148,7 @@ export const AuthScreen = () => {
                   placeholder="user@example.com"
                   autoComplete="email"
                   value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  onChange={handleFieldChange(setEmail)}
                   required
                 />
               </div>
@@ -156,7 +161,7 @@ export const AuthScreen = () => {
                   placeholder="••••••••"
                   autoComplete="new-password"
                   value={password}
-                  onChange={(e) => setPassword(e.target.value)}
+                  onChange={handleFieldChange(setPassword)}
                   minLength={6}
                   required
                 />
@@ -172,7 +177,7 @@ export const AuthScreen = () => {
                   placeholder="user@example.com or username"
                   autoComplete="username"
                   value={emailOrUsername}
-                  onChange={(e) => setEmailOrUsername(e.target.value)}
+                  onChange={handleFieldChange(setEmailOrUsername)}
                   required
                 />
               </div>
@@ -185,7 +190,7 @@ export const AuthScreen = () => {
                   placeholder="••••••••"
                   autoComplete="current-password"
                   value={password}
-                  onChange={(e) => setPassword(e.target.value)}
+                  onChange={handleFieldChange(setPassword)}
                   required
                 />
               </div>
