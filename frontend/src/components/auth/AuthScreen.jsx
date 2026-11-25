@@ -5,6 +5,7 @@ export const AuthScreen = () => {
   const { login, register, error, setError } = useAuth();
   const [isRegister, setIsRegister] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isPasswordVisible, setIsPasswordVisible] = useState(false);
 
   // Form states
   const [emailOrUsername, setEmailOrUsername] = useState('');
@@ -12,6 +13,11 @@ export const AuthScreen = () => {
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [fullName, setFullName] = useState('');
+
+  const handleFieldChange = (setValue) => (e) => {
+    setValue(e.target.value);
+    if (error) setError(null);
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -77,6 +83,7 @@ export const AuthScreen = () => {
             className={`auth-tab ${!isRegister ? 'active' : ''}`}
             onClick={() => {
               setIsRegister(false);
+              setIsPasswordVisible(false);
               setError(null);
             }}
           >
@@ -87,6 +94,7 @@ export const AuthScreen = () => {
             className={`auth-tab ${isRegister ? 'active' : ''}`}
             onClick={() => {
               setIsRegister(true);
+              setIsPasswordVisible(false);
               setError(null);
             }}
           >
@@ -116,7 +124,7 @@ export const AuthScreen = () => {
                   placeholder="e.g. Your Name"
                   autoComplete="name"
                   value={fullName}
-                  onChange={(e) => setFullName(e.target.value)}
+                  onChange={handleFieldChange(setFullName)}
                   required
                 />
               </div>
@@ -128,8 +136,10 @@ export const AuthScreen = () => {
                   type="text"
                   placeholder="e.g. username"
                   autoComplete="username"
+                  autoCapitalize="none"
+                  spellCheck={false}
                   value={username}
-                  onChange={(e) => setUsername(e.target.value)}
+                  onChange={handleFieldChange(setUsername)}
                   minLength={3}
                   required
                 />
@@ -142,24 +152,37 @@ export const AuthScreen = () => {
                   type="email"
                   placeholder="user@example.com"
                   autoComplete="email"
+                  autoCapitalize="none"
+                  spellCheck={false}
                   value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  onChange={handleFieldChange(setEmail)}
                   required
                 />
               </div>
 
               <div className="form-group">
                 <label htmlFor="reg-password">Password (min 6 characters)</label>
-                <input
-                  id="reg-password"
-                  type="password"
-                  placeholder="••••••••"
-                  autoComplete="new-password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  minLength={6}
-                  required
-                />
+                <div className="password-input-wrapper">
+                  <input
+                    id="reg-password"
+                    type={isPasswordVisible ? 'text' : 'password'}
+                    placeholder="••••••••"
+                    autoComplete="new-password"
+                    value={password}
+                    onChange={handleFieldChange(setPassword)}
+                    minLength={6}
+                    required
+                  />
+                  <button
+                    type="button"
+                    className="password-visibility-toggle"
+                    aria-label={isPasswordVisible ? 'Hide password' : 'Show password'}
+                    aria-pressed={isPasswordVisible}
+                    onClick={() => setIsPasswordVisible((visible) => !visible)}
+                  >
+                    {isPasswordVisible ? 'Hide' : 'Show'}
+                  </button>
+                </div>
               </div>
             </>
           ) : (
@@ -171,23 +194,36 @@ export const AuthScreen = () => {
                   type="text"
                   placeholder="user@example.com or username"
                   autoComplete="username"
+                  autoCapitalize="none"
+                  spellCheck={false}
                   value={emailOrUsername}
-                  onChange={(e) => setEmailOrUsername(e.target.value)}
+                  onChange={handleFieldChange(setEmailOrUsername)}
                   required
                 />
               </div>
 
               <div className="form-group">
                 <label htmlFor="login-password">Password</label>
-                <input
-                  id="login-password"
-                  type="password"
-                  placeholder="••••••••"
-                  autoComplete="current-password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                />
+                <div className="password-input-wrapper">
+                  <input
+                    id="login-password"
+                    type={isPasswordVisible ? 'text' : 'password'}
+                    placeholder="••••••••"
+                    autoComplete="current-password"
+                    value={password}
+                    onChange={handleFieldChange(setPassword)}
+                    required
+                  />
+                  <button
+                    type="button"
+                    className="password-visibility-toggle"
+                    aria-label={isPasswordVisible ? 'Hide password' : 'Show password'}
+                    aria-pressed={isPasswordVisible}
+                    onClick={() => setIsPasswordVisible((visible) => !visible)}
+                  >
+                    {isPasswordVisible ? 'Hide' : 'Show'}
+                  </button>
+                </div>
               </div>
             </>
           )}
