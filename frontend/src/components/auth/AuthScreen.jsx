@@ -5,6 +5,7 @@ export const AuthScreen = () => {
   const { login, register, error, setError } = useAuth();
   const [isRegister, setIsRegister] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isPasswordVisible, setIsPasswordVisible] = useState(false);
 
   // Form states
   const [emailOrUsername, setEmailOrUsername] = useState('');
@@ -159,16 +160,27 @@ export const AuthScreen = () => {
 
               <div className="form-group">
                 <label htmlFor="reg-password">Password (min 6 characters)</label>
-                <input
-                  id="reg-password"
-                  type="password"
-                  placeholder="••••••••"
-                  autoComplete="new-password"
-                  value={password}
-                  onChange={handleFieldChange(setPassword)}
-                  minLength={6}
-                  required
-                />
+                <div className="password-input-wrapper">
+                  <input
+                    id="reg-password"
+                    type={isPasswordVisible ? 'text' : 'password'}
+                    placeholder="••••••••"
+                    autoComplete="new-password"
+                    value={password}
+                    onChange={handleFieldChange(setPassword)}
+                    minLength={6}
+                    required
+                  />
+                  <button
+                    type="button"
+                    className="password-visibility-toggle"
+                    aria-label={isPasswordVisible ? 'Hide password' : 'Show password'}
+                    aria-pressed={isPasswordVisible}
+                    onClick={() => setIsPasswordVisible((visible) => !visible)}
+                  >
+                    {isPasswordVisible ? 'Hide' : 'Show'}
+                  </button>
+                </div>
               </div>
             </>
           ) : (
@@ -190,15 +202,26 @@ export const AuthScreen = () => {
 
               <div className="form-group">
                 <label htmlFor="login-password">Password</label>
-                <input
-                  id="login-password"
-                  type="password"
-                  placeholder="••••••••"
-                  autoComplete="current-password"
-                  value={password}
-                  onChange={handleFieldChange(setPassword)}
-                  required
-                />
+                <div className="password-input-wrapper">
+                  <input
+                    id="login-password"
+                    type={isPasswordVisible ? 'text' : 'password'}
+                    placeholder="••••••••"
+                    autoComplete="current-password"
+                    value={password}
+                    onChange={handleFieldChange(setPassword)}
+                    required
+                  />
+                  <button
+                    type="button"
+                    className="password-visibility-toggle"
+                    aria-label={isPasswordVisible ? 'Hide password' : 'Show password'}
+                    aria-pressed={isPasswordVisible}
+                    onClick={() => setIsPasswordVisible((visible) => !visible)}
+                  >
+                    {isPasswordVisible ? 'Hide' : 'Show'}
+                  </button>
+                </div>
               </div>
             </>
           )}
