@@ -1,6 +1,6 @@
 # Real-Time Chat & Team Collaboration App
 
-A college project MVP for real-time team communication and collaboration, built with **React 18 + Vite**, **Node.js + Express**, and **Socket.IO**.
+A college project MVP for real-time team communication and collaboration, built with **React 18 + Vite**, **Node.js + Express**, **Socket.IO**, and **MongoDB + Mongoose**.
 
 ---
 
@@ -23,9 +23,10 @@ A college project MVP for real-time team communication and collaboration, built 
   - Group collaboration channels with member management (add/remove members, admin roles).
   - Message editing with `(edited)` indicator tags.
   - Message deletion with placeholder tombstones.
-- **Evaluation 1 In-Memory Storage**:
-  - In-memory data store (`backend/src/storage/memoryStore.js`).
-  - Decoupled Repository Pattern (`userRepository`, `conversationRepository`, `messageRepository`) enabling seamless transition to MongoDB/Mongoose in Evaluation 2.
+- **MongoDB Persistent Storage**:
+  - MongoDB database with Mongoose ODM for persistent data storage.
+  - Mongoose models: `User`, `Conversation`, `Message`, `UnreadCount` (`backend/src/models/`).
+  - Decoupled Repository Pattern (`userRepository`, `conversationRepository`, `messageRepository`) for clean data access.
 
 ---
 
@@ -44,7 +45,8 @@ Chat app/
 │       ├── repositories/        # Data access layer (User, Conv, Message)
 │       ├── routes/              # Express API routers
 │       ├── sockets/             # Socket.IO connection & event handlers
-│       ├── storage/             # In-memory store & demo seed data
+│       ├── models/              # Mongoose schemas (User, Conversation, Message, UnreadCount)
+│       ├── storage/             # Demo seed data
 │       └── server.js            # Express app + HTTP server + Socket.IO boot
 ├── frontend/
 │   ├── .env.example
@@ -75,6 +77,7 @@ Chat app/
 
 - **Node.js**: v18+ (tested on Node.js `v24.4.0`)
 - **npm**: v9+ (tested on npm `11.4.2`)
+- **MongoDB**: v6+ (running locally on port `27017` or via a connection string in `.env`)
 
 ---
 
@@ -106,7 +109,7 @@ npm install
 cd backend
 npm start
 ```
-*Backend will start on port `5000` (`http://localhost:5000`). It automatically seeds 3 demo users.*
+*Backend will start on port `5000` (`http://localhost:5000`). It connects to MongoDB and automatically seeds 3 demo users.*
 
 ### 2. Start the Frontend Dev Server
 Open a second terminal window:
@@ -177,10 +180,17 @@ You can register any new account, or click the one-click demo login buttons on t
 
 ---
 
-## 🔄 Transitioning to Evaluation 2 (MongoDB)
+## 🗄️ Database (MongoDB + Mongoose)
 
-All data storage is isolated in `backend/src/repositories/`. The controllers and Socket.IO handlers interact solely with the repository interfaces (`userRepository`, `conversationRepository`, `messageRepository`). To switch to MongoDB in Evaluation 2:
-1. Connect Mongoose in `backend/src/server.js`.
-2. Implement Mongoose models matching the data contracts.
-3. Replace the methods inside `repositories/*.js` with Mongoose queries.
-The controllers, routes, Socket.IO handlers, and frontend require zero modifications.
+All data is persisted in MongoDB via Mongoose ODM. The data layer consists of:
+
+| Model | Collection | Description |
+| :--- | :--- | :--- |
+| `User` | `users` | Registered user accounts |
+| `Conversation` | `conversations` | Direct and group chat conversations |
+| `Message` | `messages` | Chat messages with read receipts and reactions |
+| `UnreadCount` | `unreadcounts` | Per-user unread message counters per conversation |
+
+**Connection**: Configure `MONGODB_URI` in `backend/.env` (defaults to `mongodb://127.0.0.1:27017/chat_collaboration`).
+
+The controllers, routes, Socket.IO handlers, and frontend interact solely with the repository interfaces (`userRepository`, `conversationRepository`, `messageRepository`) — the same clean Repository Pattern from Evaluation 1, now backed by Mongoose queries.

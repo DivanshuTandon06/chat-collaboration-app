@@ -3,6 +3,7 @@ import http from 'http';
 import { Server as SocketIOServer } from 'socket.io';
 import cors from 'cors';
 import { config } from './config/index.js';
+import connectDB from './config/db.js';
 import authRoutes from './routes/authRoutes.js';
 import userRoutes from './routes/userRoutes.js';
 import conversationRoutes from './routes/conversationRoutes.js';
@@ -59,10 +60,16 @@ app.use((err, req, res, next) => {
 // Register Socket.IO handlers
 registerSocketHandlers(io);
 
-// Start server and seed demo data
-server.listen(config.port, async () => {
-  console.log(`🚀 Chat Collaboration Backend running on port ${config.port}`);
+// Connect to MongoDB, seed data, then start the server
+const startServer = async () => {
+  await connectDB();
   await seedInitialData();
-});
+
+  server.listen(config.port, () => {
+    console.log(`🚀 Chat Collaboration Backend running on port ${config.port}`);
+  });
+};
+
+startServer();
 
 export { app, server, io };

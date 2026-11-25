@@ -1,83 +1,87 @@
-import { memoryStore } from '../storage/memoryStore.js';
+import User from '../models/User.js';
 
 export const userRepository = {
   async create({ username, email, password, fullName, statusMessage }) {
-    const id = memoryStore.generateId();
-    const now = new Date();
-    const user = {
-      id,
+    const user = await User.create({
       username: username.trim(),
       email: email.trim().toLowerCase(),
       password,
       fullName: fullName ? fullName.trim() : username.trim(),
       avatarUrl: `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(fullName || username)}`,
-      statusMessage: statusMessage ? statusMessage.trim() : 'Available to collaborate',
-      createdAt: now,
-      updatedAt: now
-    };
+      statusMessage: statusMessage ? statusMessage.trim() : 'Available to collaborate'
+    });
 
-    memoryStore.users.set(id, user);
-    memoryStore.usersByEmail.set(user.email, id);
-    memoryStore.usersByUsername.set(user.username.toLowerCase(), id);
-    memoryStore.saveUsers();
-
-    return this.sanitizeUser(user);
+    return this.sanitizeUser(user.toJSON());
   },
 
   async findById(id) {
-    const user = memoryStore.users.get(id);
-    return user ? { ...user } : null;
+    const user = await User.findById(id).lean();
+    if (!user) return null;
+    user.id = user._id.toString();
+    delete user._id;
+    delete user.__v;
+    return user;
   },
 
   async findByEmail(email) {
     if (!email) return null;
-    const id = memoryStore.usersByEmail.get(email.trim().toLowerCase());
-    if (!id) return null;
-    const user = memoryStore.users.get(id);
-    return user ? { ...user } : null;
+    const user = await User.findOne({ email: email.trim().toLowerCase() }).lean();
+    if (!user) return null;
+    user.id = user._id.toString();
+    delete user._id;
+    delete user.__v;
+    return user;
   },
 
   async findByUsername(username) {
     if (!username) return null;
-    const id = memoryStore.usersByUsername.get(username.trim().toLowerCase());
-    if (!id) return null;
-    const user = memoryStore.users.get(id);
-    return user ? { ...user } : null;
+    const user = await User.findOne({ username: username.trim().toLowerCase() }).lean();
+    if (!user) return null;
+    user.id = user._id.toString();
+    delete user._id;
+    delete user.__v;
+    return user;
   },
 
   async findAll({ excludeUserId = null, query = '' } = {}) {
-    const results = [];
-    const q = query.trim().toLowerCase();
+    const filter = {};
 
-    for (const user of memoryStore.users.values()) {
-      if (excludeUserId && user.id === excludeUserId) {
-        continue;
-      }
-      if (
-        !q ||
-        user.username.toLowerCase().includes(q) ||
-        user.fullName.toLowerCase().includes(q) ||
-        user.email.toLowerCase().includes(q)
-      ) {
-        results.push(this.sanitizeUser(user));
-      }
+    if (excludeUserId) {
+      filter._id = { $ne: excludeUserId };
     }
 
-    return results.sort((a, b) => a.fullName.localeCompare(b.fullName));
+    if (query && query.trim()) {
+      const q = query.trim();
+      const regex = new RegExp(q, 'i');
+      filter.$or = [
+        { username: regex },
+        { fullName: regex },
+        { email: regex }
+      ];
+    }
+
+    const users = await User.find(filter).sort({ fullName: 1 }).lean();
+
+    return users.map((u) => {
+      u.id = u._id.toString();
+      delete u._id;
+      delete u.__v;
+      return this.sanitizeUser(u);
+    });
   },
 
   async update(id, updateData) {
-    const user = memoryStore.users.get(id);
-    if (!user) return null;
+    const user = await User.findByIdAndUpdate(
+      id,
+      { ...updateData, updatedAt: new Date() },
+      { new: true }
+    ).lean();
 
-    const updated = {
-      ...user,
-      ...updateData,
-      updatedAt: new Date()
-    };
-    memoryStore.users.set(id, updated);
-    memoryStore.saveUsers();
-    return this.sanitizeUser(updated);
+    if (!user) return null;
+    user.id = user._id.toString();
+    delete user._id;
+    delete user.__v;
+    return this.sanitizeUser(user);
   },
 
   sanitizeUser(user) {

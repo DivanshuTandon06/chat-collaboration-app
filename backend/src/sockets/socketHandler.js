@@ -1,8 +1,11 @@
 import { socketAuthMiddleware } from '../middleware/socketAuthMiddleware.js';
-import { memoryStore } from '../storage/memoryStore.js';
 import { conversationRepository } from '../repositories/conversationRepository.js';
 import { messageRepository } from '../repositories/messageRepository.js';
 import { userRepository } from '../repositories/userRepository.js';
+
+// In-memory real-time tracking (presence stays in memory — not persisted)
+const onlineUserSockets = new Map(); // userId -> Set of socketIds
+const lastSeenMap = new Map(); // userId -> Date
 
 export const registerSocketHandlers = (io) => {
   io.use(socketAuthMiddleware);
@@ -15,10 +18,10 @@ export const registerSocketHandlers = (io) => {
     socket.join(`user:${userId}`);
 
     // 2. Track presence
-    if (!memoryStore.onlineUserSockets.has(userId)) {
-      memoryStore.onlineUserSockets.set(userId, new Set());
+    if (!onlineUserSockets.has(userId)) {
+      onlineUserSockets.set(userId, new Set());
     }
-    const userSockets = memoryStore.onlineUserSockets.get(userId);
+    const userSockets = onlineUserSockets.get(userId);
     const wasOffline = userSockets.size === 0;
     userSockets.add(socket.id);
 
@@ -31,7 +34,7 @@ export const registerSocketHandlers = (io) => {
     }
 
     // Send current list of online users to this socket
-    const onlineUserIds = Array.from(memoryStore.onlineUserSockets.entries())
+    const onlineUserIds = Array.from(onlineUserSockets.entries())
       .filter(([_, sockets]) => sockets && sockets.size > 0)
       .map(([uid]) => uid);
 
@@ -267,15 +270,15 @@ export const registerSocketHandlers = (io) => {
       }
     });
 
-    // 10. Disconnect and Presence Cleanup
+    // 12. Disconnect and Presence Cleanup
     socket.on('disconnect', () => {
-      const currentSockets = memoryStore.onlineUserSockets.get(userId);
+      const currentSockets = onlineUserSockets.get(userId);
       if (currentSockets) {
         currentSockets.delete(socket.id);
         if (currentSockets.size === 0) {
-          memoryStore.onlineUserSockets.delete(userId);
+          onlineUserSockets.delete(userId);
           const lastSeen = new Date();
-          memoryStore.lastSeen.set(userId, lastSeen);
+          lastSeenMap.set(userId, lastSeen);
 
           io.emit('presence:update', {
             userId,

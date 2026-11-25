@@ -21,7 +21,24 @@ export const ChatProvider = ({ children }) => {
   const activeIdRef = useRef(activeConversationId);
   activeIdRef.current = activeConversationId;
 
-  // 1. Fetch conversations when user logs in
+  // 1. Fetch messages for active conversation (defined first so fetchConversations can reference it)
+  const fetchMessages = useCallback(async (conversationId) => {
+    if (!conversationId) return;
+    setIsLoadingMessages(true);
+    try {
+      const data = await api.get(`/api/conversations/${conversationId}/messages`);
+      setMessages((prev) => ({
+        ...prev,
+        [conversationId]: data.messages || []
+      }));
+    } catch (err) {
+      console.error(`Failed to load messages for ${conversationId}:`, err);
+    } finally {
+      setIsLoadingMessages(false);
+    }
+  }, []);
+
+  // 2. Fetch conversations when user logs in
   const fetchConversations = useCallback(async () => {
     if (!isAuthenticated) return;
     setIsLoadingConversations(true);
@@ -44,23 +61,6 @@ export const ChatProvider = ({ children }) => {
   useEffect(() => {
     fetchConversations();
   }, [fetchConversations]);
-
-  // 2. Fetch messages for active conversation
-  const fetchMessages = useCallback(async (conversationId) => {
-    if (!conversationId) return;
-    setIsLoadingMessages(true);
-    try {
-      const data = await api.get(`/api/conversations/${conversationId}/messages`);
-      setMessages((prev) => ({
-        ...prev,
-        [conversationId]: data.messages || []
-      }));
-    } catch (err) {
-      console.error(`Failed to load messages for ${conversationId}:`, err);
-    } finally {
-      setIsLoadingMessages(false);
-    }
-  }, []);
 
   // 3. Select Conversation & Mark as Read
   const selectConversation = useCallback(
