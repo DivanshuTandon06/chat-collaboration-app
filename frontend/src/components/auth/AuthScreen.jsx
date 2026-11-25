@@ -15,14 +15,39 @@ export const AuthScreen = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setIsSubmitting(true);
     setError(null);
 
+    const normalizedEmailOrUsername = emailOrUsername.trim();
+    const normalizedUsername = username.trim();
+    const normalizedEmail = email.trim();
+    const normalizedFullName = fullName.trim();
+
+    if (isRegister && normalizedFullName.length === 0) {
+      setError('Please enter your full name.');
+      return;
+    }
+
+    if (isRegister && normalizedUsername.length < 3) {
+      setError('Username must contain at least 3 non-space characters.');
+      return;
+    }
+
+    if (!isRegister && normalizedEmailOrUsername.length === 0) {
+      setError('Please enter your email or username.');
+      return;
+    }
+
+    setIsSubmitting(true);
     try {
       if (isRegister) {
-        await register({ username, email, password, fullName });
+        await register({
+          username: normalizedUsername,
+          email: normalizedEmail,
+          password,
+          fullName: normalizedFullName
+        });
       } else {
-        await login(emailOrUsername, password);
+        await login(normalizedEmailOrUsername, password);
       }
     } catch (err) {
       // Error handled by AuthContext
@@ -70,7 +95,7 @@ export const AuthScreen = () => {
         </div>
 
         {error && (
-          <div className="auth-error-banner">
+          <div className="auth-error-banner" role="alert">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <circle cx="12" cy="12" r="10"></circle>
               <line x1="12" y1="8" x2="12" y2="12"></line>
@@ -89,6 +114,7 @@ export const AuthScreen = () => {
                   id="reg-fullname"
                   type="text"
                   placeholder="e.g. Your Name"
+                  autoComplete="name"
                   value={fullName}
                   onChange={(e) => setFullName(e.target.value)}
                   required
@@ -101,6 +127,7 @@ export const AuthScreen = () => {
                   id="reg-username"
                   type="text"
                   placeholder="e.g. username"
+                  autoComplete="username"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                   minLength={3}
@@ -114,6 +141,7 @@ export const AuthScreen = () => {
                   id="reg-email"
                   type="email"
                   placeholder="user@example.com"
+                  autoComplete="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   required
@@ -126,6 +154,7 @@ export const AuthScreen = () => {
                   id="reg-password"
                   type="password"
                   placeholder="••••••••"
+                  autoComplete="new-password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   minLength={6}
@@ -141,6 +170,7 @@ export const AuthScreen = () => {
                   id="login-identity"
                   type="text"
                   placeholder="user@example.com or username"
+                  autoComplete="username"
                   value={emailOrUsername}
                   onChange={(e) => setEmailOrUsername(e.target.value)}
                   required
@@ -153,6 +183,7 @@ export const AuthScreen = () => {
                   id="login-password"
                   type="password"
                   placeholder="••••••••"
+                  autoComplete="current-password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   required
