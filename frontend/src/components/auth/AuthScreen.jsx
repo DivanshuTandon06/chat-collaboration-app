@@ -15,14 +15,39 @@ export const AuthScreen = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setIsSubmitting(true);
     setError(null);
 
+    const normalizedEmailOrUsername = emailOrUsername.trim();
+    const normalizedUsername = username.trim();
+    const normalizedEmail = email.trim();
+    const normalizedFullName = fullName.trim();
+
+    if (isRegister && normalizedFullName.length === 0) {
+      setError('Please enter your full name.');
+      return;
+    }
+
+    if (isRegister && normalizedUsername.length < 3) {
+      setError('Username must contain at least 3 non-space characters.');
+      return;
+    }
+
+    if (!isRegister && normalizedEmailOrUsername.length === 0) {
+      setError('Please enter your email or username.');
+      return;
+    }
+
+    setIsSubmitting(true);
     try {
       if (isRegister) {
-        await register({ username, email, password, fullName });
+        await register({
+          username: normalizedUsername,
+          email: normalizedEmail,
+          password,
+          fullName: normalizedFullName
+        });
       } else {
-        await login(emailOrUsername, password);
+        await login(normalizedEmailOrUsername, password);
       }
     } catch (err) {
       // Error handled by AuthContext
