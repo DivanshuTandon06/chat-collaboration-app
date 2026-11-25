@@ -83,6 +83,7 @@ export const AuthScreen = () => {
             className={`auth-tab ${!isRegister ? 'active' : ''}`}
             onClick={() => {
               setIsRegister(false);
+              setIsPasswordVisible(false);
               setError(null);
             }}
           >
@@ -93,6 +94,7 @@ export const AuthScreen = () => {
             className={`auth-tab ${isRegister ? 'active' : ''}`}
             onClick={() => {
               setIsRegister(true);
+              setIsPasswordVisible(false);
               setError(null);
             }}
           >
