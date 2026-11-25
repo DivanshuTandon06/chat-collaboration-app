@@ -133,6 +133,8 @@ export const AuthScreen = () => {
                   type="text"
                   placeholder="e.g. username"
                   autoComplete="username"
+                  autoCapitalize="none"
+                  spellCheck={false}
                   value={username}
                   onChange={handleFieldChange(setUsername)}
                   minLength={3}
@@ -147,6 +149,8 @@ export const AuthScreen = () => {
                   type="email"
                   placeholder="user@example.com"
                   autoComplete="email"
+                  autoCapitalize="none"
+                  spellCheck={false}
                   value={email}
                   onChange={handleFieldChange(setEmail)}
                   required
@@ -176,6 +180,8 @@ export const AuthScreen = () => {
                   type="text"
                   placeholder="user@example.com or username"
                   autoComplete="username"
+                  autoCapitalize="none"
+                  spellCheck={false}
                   value={emailOrUsername}
                   onChange={handleFieldChange(setEmailOrUsername)}
                   required
