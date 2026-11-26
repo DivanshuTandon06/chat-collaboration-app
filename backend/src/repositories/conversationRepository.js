@@ -43,7 +43,7 @@ export const conversationRepository = {
       { conversationId: conv._id, userId: user2Id, count: 0 }
     ]);
 
-    return this._normalize(conv.toObject());
+    return this._normalize(conv.toObject({ transform: false }));
   },
 
   async createGroup({ name, description = '', createdById, participantIds = [] }) {
@@ -74,7 +74,7 @@ export const conversationRepository = {
       }))
     );
 
-    return this._normalize(conv.toObject());
+    return this._normalize(conv.toObject({ transform: false }));
   },
 
   async findByUserId(userId) {
