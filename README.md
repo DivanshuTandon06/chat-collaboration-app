@@ -119,18 +119,6 @@ npm run dev
 
 ---
 
-## 👥 Demo Accounts for Quick Evaluation
-
-You can register any new account, or click the one-click demo login buttons on the sign-in screen:
-
-| Name | Email | Username | Password | Role |
-| :--- | :--- | :--- | :--- | :--- |
-| **Alice Johnson** | `alice@example.com` | `alice` | `password123` | Project Admin |
-| **Bob Smith** | `bob@example.com` | `bob` | `password123` | Team Member |
-| **Charlie Davis** | `charlie@example.com` | `charlie` | `password123` | Team Member |
-
----
-
 ## 🧪 Evaluation Test Walkthrough
 
 1. **Test 1-on-1 Real-Time Chat & Presence**:
