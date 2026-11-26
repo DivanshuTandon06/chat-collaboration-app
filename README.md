@@ -137,7 +137,6 @@ _Frontend will start on `http://localhost:5173`._
 ## 👥 Creating Test Accounts
 
 Register at least two accounts through the sign-in screen. Use one browser window for the first account and a private/incognito window for the second account.
-
 ## 🧪 Evaluation Test Walkthrough
 
 1. **Test 1-on-1 Real-Time Chat & Presence**:
