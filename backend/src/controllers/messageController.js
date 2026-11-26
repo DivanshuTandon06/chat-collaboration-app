@@ -11,8 +11,9 @@ export const messageController = {
         return res.status(403).json({ message: 'Access denied: You are not a member of this conversation.' });
       }
 
-      const messages = await messageRepository.findByConversationId(conversationId);
-      return res.status(200).json({ messages });
+      const { before, limit } = req.query;
+      const page = await messageRepository.findByConversationId(conversationId, { before, limit });
+      return res.status(200).json(page);
     } catch (error) {
       console.error('Error fetching messages:', error);
       return res.status(500).json({ message: 'Failed to retrieve messages.' });

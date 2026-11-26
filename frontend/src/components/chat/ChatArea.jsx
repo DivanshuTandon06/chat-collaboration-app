@@ -14,6 +14,8 @@ export const ChatArea = ({ onOpenGroupDetails, onBackToSidebar, isGroupDetailsOp
     activeMessages,
     currentTypingUsers,
     isLoadingMessages,
+    canLoadOlderMessages,
+    loadOlderMessages,
     sendMessage,
     editMessage,
     deleteMessage,
@@ -294,6 +296,11 @@ export const ChatArea = ({ onOpenGroupDetails, onBackToSidebar, isGroupDetailsOp
           </div>
 
           {/* Messages list */}
+          {canLoadOlderMessages && (
+            <button type="button" className="btn-secondary" onClick={loadOlderMessages} disabled={isLoadingMessages}>
+              {isLoadingMessages ? 'Loading older messages…' : 'Load older messages'}
+            </button>
+          )}
           {isLoadingMessages && activeMessages.length === 0 ? (
             <div className="messages-loading">
               <span className="spinner-sm"></span>
