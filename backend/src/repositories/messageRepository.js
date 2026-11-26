@@ -1,3 +1,5 @@
+
+import mongoose from 'mongoose';
 import Message from '../models/Message.js';
 import { userRepository } from './userRepository.js';
 
@@ -18,45 +20,79 @@ export const messageRepository = {
     });
 
     const msgObj = message.toJSON();
-    // Attach sender profile to match the existing API shape
-    msgObj.sender = sender ? userRepository.sanitizeUser(sender) : { id: senderId };
+    msgObj.sender = sender
+      ? userRepository.sanitizeUser(sender)
+      : { id: senderId };
 
     return msgObj;
   },
 
   async findById(id) {
+    if (!mongoose.isValidObjectId(id)) return null;
+
     const msg = await Message.findById(id).lean();
     if (!msg) return null;
+
     return this._normalize(msg);
   },
 
-  async findByConversationId(conversationId) {
-    const messages = await Message.find({ conversationId })
-      .sort({ createdAt: 1 })
-      .lean();
+  // Cursor-based pagination
+  async findByConversationId(conversationId, { before, limit = 30 } = {}) {
+    const pageSize = Math.min(Math.max(Number(limit) || 30, 1), 100);
+    const filter = { conversationId };
 
-    const result = [];
-    for (const msg of messages) {
-      const normalized = this._normalize(msg);
-      // Attach sender profile
-      const sender = await userRepository.findById(normalized.senderId);
-      normalized.sender = sender ? userRepository.sanitizeUser(sender) : { id: normalized.senderId };
-      result.push(normalized);
+    if (before && mongoose.isValidObjectId(before)) {
+      const cursor = await Message.findOne({
+        _id: before,
+        conversationId
+      }).select('createdAt');
+
+      if (cursor) {
+        filter.createdAt = { $lt: cursor.createdAt };
+      }
     }
 
-    return result;
+    const docs = await Message.find(filter)
+      .sort({ createdAt: -1, _id: -1 })
+      .limit(pageSize + 1)
+      .lean();
+
+    const hasMore = docs.length > pageSize;
+
+    const page = docs
+      .slice(0, pageSize)
+      .reverse()
+      .map((msg) => this._normalize(msg));
+
+    // Attach sender profiles
+    for (const msg of page) {
+      const sender = await userRepository.findById(msg.senderId);
+      msg.sender = sender
+        ? userRepository.sanitizeUser(sender)
+        : { id: msg.senderId };
+    }
+
+    return {
+      messages: page,
+      hasMore,
+      nextCursor: hasMore ? page[0]?.id : null
+    };
   },
 
   async update(id, { text }) {
+    if (!mongoose.isValidObjectId(id)) return null;
+
     const msg = await Message.findByIdAndUpdate(
       id,
       {
-        text: text.trim(),
-        isEdited: true,
-        editedAt: new Date(),
-        updatedAt: new Date()
+        $set: {
+          text: text.trim(),
+          isEdited: true,
+          editedAt: new Date(),
+          updatedAt: new Date()
+        }
       },
-      { new: true }
+      { new: true, runValidators: true }
     ).lean();
 
     if (!msg) return null;
@@ -64,13 +100,17 @@ export const messageRepository = {
   },
 
   async delete(id) {
+    if (!mongoose.isValidObjectId(id)) return null;
+
     const msg = await Message.findByIdAndUpdate(
       id,
       {
-        isDeleted: true,
-        text: 'This message was deleted',
-        deletedAt: new Date(),
-        updatedAt: new Date()
+        $set: {
+          isDeleted: true,
+          text: 'This message was deleted',
+          deletedAt: new Date(),
+          updatedAt: new Date()
+        }
       },
       { new: true }
     ).lean();
@@ -80,35 +120,38 @@ export const messageRepository = {
   },
 
   async markConversationMessagesRead(conversationId, readerId) {
-    const now = new Date();
-
-    // Find messages not sent by reader that reader hasn't read yet
-    const unreadMessages = await Message.find({
+    const unread = await Message.find({
       conversationId,
       senderId: { $ne: readerId },
       'readBy.userId': { $ne: readerId }
-    }).lean();
+    }).select('_id');
 
-    const updatedIds = [];
+    if (!unread.length) return [];
 
-    if (unreadMessages.length > 0) {
-      const ids = unreadMessages.map((m) => m._id);
-      await Message.updateMany(
-        { _id: { $in: ids } },
-        { $push: { readBy: { userId: readerId, readAt: now } } }
-      );
-      updatedIds.push(...ids.map((id) => id.toString()));
-    }
+    const ids = unread.map((msg) => msg._id);
 
-    return updatedIds;
+    await Message.updateMany(
+      { _id: { $in: ids } },
+      {
+        $push: {
+          readBy: { userId: readerId, readAt: new Date() }
+        }
+      }
+    );
+
+    return ids.map((id) => id.toString());
   },
 
   async toggleReaction(id, { userId, username, emoji }) {
+    if (!mongoose.isValidObjectId(id)) return null;
+
     const msg = await Message.findById(id);
     if (!msg || msg.isDeleted) return null;
 
     const existingIdx = msg.reactions.findIndex(
-      (r) => r.userId.toString() === userId.toString() && r.emoji === emoji
+      (r) =>
+        r.userId.toString() === userId.toString() &&
+        r.emoji === emoji
     );
 
     if (existingIdx !== -1) {
@@ -128,11 +171,10 @@ export const messageRepository = {
     return this._normalize(msg.toObject());
   },
 
-  /**
-   * Normalize a lean Mongoose document to match the shape controllers expect.
-   */
+  // Convert MongoDB ObjectIds into strings for API responses
   _normalize(doc) {
     const obj = { ...doc };
+
     obj.id = obj._id.toString();
     delete obj._id;
     delete obj.__v;
@@ -140,21 +182,29 @@ export const messageRepository = {
     if (obj.conversationId?.toString) {
       obj.conversationId = obj.conversationId.toString();
     }
+
     if (obj.senderId?.toString) {
       obj.senderId = obj.senderId.toString();
     }
+
     if (obj.readBy) {
       obj.readBy = obj.readBy.map((r) => ({
         ...r,
-        userId: r.userId?.toString ? r.userId.toString() : r.userId
+        userId: r.userId?.toString
+          ? r.userId.toString()
+          : r.userId
       }));
     }
+
     if (obj.reactions) {
       obj.reactions = obj.reactions.map((r) => ({
         ...r,
-        userId: r.userId?.toString ? r.userId.toString() : r.userId
+        userId: r.userId?.toString
+          ? r.userId.toString()
+          : r.userId
       }));
     }
+
     return obj;
   }
 };

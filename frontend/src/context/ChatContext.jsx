@@ -1,4 +1,13 @@
-import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
+
+import React, {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  useCallback,
+  useRef
+} from 'react';
+
 import { api } from '../api/client';
 import { useAuth } from './AuthContext';
 import { useSocket } from './SocketContext';
@@ -13,43 +22,72 @@ export const ChatProvider = ({ children }) => {
   const [activeConversationId, setActiveConversationId] = useState(
     () => localStorage.getItem('chat_active_conv_id') || null
   );
-  const [messages, setMessages] = useState({}); // conversationId -> Array of message objects
-  const [typingUsers, setTypingUsers] = useState({}); // conversationId -> Array of { id, username, fullName }
+
+  const [messages, setMessages] = useState({});
+  const [messagePages, setMessagePages] = useState({});
+  const [typingUsers, setTypingUsers] = useState({});
   const [isLoadingConversations, setIsLoadingConversations] = useState(false);
   const [isLoadingMessages, setIsLoadingMessages] = useState(false);
 
   const activeIdRef = useRef(activeConversationId);
+  const typingTimeoutRef = useRef(null);
+
   activeIdRef.current = activeConversationId;
 
-  // 1. Fetch messages for active conversation (defined first so fetchConversations can reference it)
+  // 1. Fetch Messages
   const fetchMessages = useCallback(async (conversationId) => {
     if (!conversationId) return;
+
     setIsLoadingMessages(true);
+
     try {
-      const data = await api.get(`/api/conversations/${conversationId}/messages`);
+      const data = await api.get(
+        `/api/conversations/${conversationId}/messages`
+      );
+
       setMessages((prev) => ({
         ...prev,
         [conversationId]: data.messages || []
       }));
+      setMessagePages((prev) => ({ ...prev, [conversationId]: { hasMore: data.hasMore, nextCursor: data.nextCursor } }));
     } catch (err) {
-      console.error(`Failed to load messages for ${conversationId}:`, err);
+      console.error('Failed to load messages:', err);
     } finally {
       setIsLoadingMessages(false);
     }
   }, []);
 
-  // 2. Fetch conversations when user logs in
+  const loadOlderMessages = useCallback(async (conversationId) => {
+    const page = messagePages[conversationId];
+    if (!page?.hasMore || !page.nextCursor || isLoadingMessages) return;
+    setIsLoadingMessages(true);
+    try {
+      const data = await api.get(`/api/conversations/${conversationId}/messages?before=${encodeURIComponent(page.nextCursor)}`);
+      setMessages((prev) => ({ ...prev, [conversationId]: [...(data.messages || []), ...(prev[conversationId] || [])] }));
+      setMessagePages((prev) => ({ ...prev, [conversationId]: { hasMore: data.hasMore, nextCursor: data.nextCursor } }));
+    } catch (err) {
+      console.error('Failed to load older messages:', err);
+    } finally {
+      setIsLoadingMessages(false);
+    }
+  }, [messagePages, isLoadingMessages]);
+
+  // 2. Fetch Conversations
   const fetchConversations = useCallback(async () => {
     if (!isAuthenticated) return;
+
     setIsLoadingConversations(true);
+
     try {
       const data = await api.get('/api/conversations');
       const list = data.conversations || [];
+
       setConversations(list);
 
       const savedActiveId = localStorage.getItem('chat_active_conv_id');
+
       if (savedActiveId && list.some((c) => c.id === savedActiveId)) {
-        fetchMessages(savedActiveId);
+        await fetchMessages(savedActiveId);
       }
     } catch (err) {
       console.error('Failed to load conversations:', err);
@@ -62,24 +100,28 @@ export const ChatProvider = ({ children }) => {
     fetchConversations();
   }, [fetchConversations]);
 
-  // 3. Select Conversation & Mark as Read
+  // 3. Select Conversation
   const selectConversation = useCallback(
     async (convId) => {
       setActiveConversationId(convId);
+
       if (!convId) {
         localStorage.removeItem('chat_active_conv_id');
         return;
       }
+
       localStorage.setItem('chat_active_conv_id', convId);
 
-      // Join socket room
       if (socket) {
-        socket.emit('conversation:join', { conversationId: convId });
+        socket.emit('conversation:join', {
+          conversationId: convId
+        });
       }
 
-      // Mark as read immediately on client & server
       setConversations((prev) =>
-        prev.map((c) => (c.id === convId ? { ...c, unreadCount: 0 } : c))
+        prev.map((c) =>
+          c.id === convId ? { ...c, unreadCount: 0 } : c
+        )
       );
 
       try {
@@ -88,21 +130,74 @@ export const ChatProvider = ({ children }) => {
         console.warn('Error marking read:', err);
       }
 
-      // Fetch messages
       await fetchMessages(convId);
     },
     [socket, fetchMessages]
   );
 
-  // 4. Send Message
+  // 4. Start Typing
+  const startTyping = useCallback(
+    (convId) => {
+      const targetId = convId || activeIdRef.current;
+
+      if (!socket || !targetId) return;
+
+      socket.emit('typing:start', {
+        conversationId: targetId
+      });
+
+      if (typingTimeoutRef.current) {
+        clearTimeout(typingTimeoutRef.current);
+      }
+
+      typingTimeoutRef.current = setTimeout(() => {
+        socket.emit('typing:stop', {
+          conversationId: targetId
+        });
+      }, 2500);
+    },
+    [socket]
+  );
+
+  // 5. Stop Typing
+  const stopTyping = useCallback(
+    (convId) => {
+      const targetId = convId || activeIdRef.current;
+
+      if (!socket || !targetId) return;
+
+      if (typingTimeoutRef.current) {
+        clearTimeout(typingTimeoutRef.current);
+        typingTimeoutRef.current = null;
+      }
+
+      socket.emit('typing:stop', {
+        conversationId: targetId
+      });
+    },
+    [socket]
+  );
+
+  useEffect(() => {
+    return () => {
+      if (typingTimeoutRef.current) {
+        clearTimeout(typingTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  // 6. Send Message
   const sendMessage = async (text) => {
     if (!activeConversationId || !text.trim()) return null;
+
     try {
-      const data = await api.post(`/api/conversations/${activeConversationId}/messages`, {
-        text: text.trim()
-      });
-      // Stop typing on send
+      const data = await api.post(
+        `/api/conversations/${activeConversationId}/messages`,
+        { text: text.trim() }
+      );
+
       stopTyping(activeConversationId);
+
       return data.message;
     } catch (err) {
       console.error('Error sending message:', err);
@@ -110,10 +205,13 @@ export const ChatProvider = ({ children }) => {
     }
   };
 
-  // 5. Edit Message
+  // 7. Edit Message
   const editMessage = async (messageId, newText) => {
     try {
-      const data = await api.put(`/api/messages/${messageId}`, { text: newText.trim() });
+      const data = await api.put(`/api/messages/${messageId}`, {
+        text: newText.trim()
+      });
+
       return data.message;
     } catch (err) {
       console.error('Error editing message:', err);
@@ -121,7 +219,7 @@ export const ChatProvider = ({ children }) => {
     }
   };
 
-  // 6. Delete Message
+  // 8. Delete Message
   const deleteMessage = async (messageId) => {
     try {
       const data = await api.delete(`/api/messages/${messageId}`);
@@ -132,10 +230,14 @@ export const ChatProvider = ({ children }) => {
     }
   };
 
-  // 6b. Toggle Emoji Reaction
+  // 9. Toggle Reaction
   const toggleReaction = async (messageId, emoji) => {
     try {
-      const data = await api.post(`/api/messages/${messageId}/reactions`, { emoji });
+      const data = await api.post(
+        `/api/messages/${messageId}/reactions`,
+        { emoji }
+      );
+
       return data.message;
     } catch (err) {
       console.error('Error toggling reaction:', err);
@@ -143,19 +245,29 @@ export const ChatProvider = ({ children }) => {
     }
   };
 
-  // 7. Direct & Group Chat Creation
+  // 10. Create Direct Chat
   const createDirectChat = async (recipientId) => {
     try {
-      const data = await api.post('/api/conversations/direct', { recipientId });
+      const data = await api.post('/api/conversations/direct', {
+        recipientId
+      });
+
       const conv = data.conversation;
+
       setConversations((prev) => {
         const exists = prev.some((c) => c.id === conv.id);
+
         if (exists) {
-          return prev.map((c) => (c.id === conv.id ? conv : c));
+          return prev.map((c) =>
+            c.id === conv.id ? conv : c
+          );
         }
+
         return [conv, ...prev];
       });
+
       await selectConversation(conv.id);
+
       return conv;
     } catch (err) {
       console.error('Error creating direct chat:', err);
@@ -163,16 +275,25 @@ export const ChatProvider = ({ children }) => {
     }
   };
 
-  const createGroupChat = async ({ name, description, participantIds }) => {
+  // 11. Create Group Chat
+  const createGroupChat = async ({
+    name,
+    description,
+    participantIds
+  }) => {
     try {
       const data = await api.post('/api/conversations/group', {
         name,
         description,
         participantIds
       });
+
       const conv = data.conversation;
+
       setConversations((prev) => [conv, ...prev]);
+
       await selectConversation(conv.id);
+
       return conv;
     } catch (err) {
       console.error('Error creating group chat:', err);
@@ -180,13 +301,20 @@ export const ChatProvider = ({ children }) => {
     }
   };
 
-  // 8. Group Member Management
+  // 12. Update Group Information
   const updateGroupInfo = async (conversationId, updateData) => {
     try {
-      const data = await api.put(`/api/conversations/${conversationId}`, updateData);
-      setConversations((prev) =>
-        prev.map((c) => (c.id === conversationId ? data.conversation : c))
+      const data = await api.put(
+        `/api/conversations/${conversationId}`,
+        updateData
       );
+
+      setConversations((prev) =>
+        prev.map((c) =>
+          c.id === conversationId ? data.conversation : c
+        )
+      );
+
       return data.conversation;
     } catch (err) {
       console.error('Error updating group info:', err);
@@ -194,33 +322,51 @@ export const ChatProvider = ({ children }) => {
     }
   };
 
+  // 13. Add Group Member
   const addGroupMember = async (conversationId, userId) => {
     try {
-      const data = await api.post(`/api/conversations/${conversationId}/members`, { userId });
-      setConversations((prev) =>
-        prev.map((c) => (c.id === conversationId ? data.conversation : c))
+      const data = await api.post(
+        `/api/conversations/${conversationId}/members`,
+        { userId }
       );
+
+      setConversations((prev) =>
+        prev.map((c) =>
+          c.id === conversationId ? data.conversation : c
+        )
+      );
+
       return data.conversation;
     } catch (err) {
-      console.error('Error adding member to group:', err);
+      console.error('Error adding group member:', err);
       throw err;
     }
   };
 
+  // 14. Remove Group Member
   const removeGroupMember = async (conversationId, targetUserId) => {
     try {
-      const data = await api.delete(`/api/conversations/${conversationId}/members/${targetUserId}`);
+      const data = await api.delete(
+        `/api/conversations/${conversationId}/members/${targetUserId}`
+      );
+
       if (targetUserId === user?.id) {
-        // Current user left the group
-        setConversations((prev) => prev.filter((c) => c.id !== conversationId));
-        if (activeConversationId === conversationId) {
+        setConversations((prev) =>
+          prev.filter((c) => c.id !== conversationId)
+        );
+
+        if (activeIdRef.current === conversationId) {
           setActiveConversationId(null);
+          localStorage.removeItem('chat_active_conv_id');
         }
       } else {
         setConversations((prev) =>
-          prev.map((c) => (c.id === conversationId ? data.conversation : c))
+          prev.map((c) =>
+            c.id === conversationId ? data.conversation : c
+          )
         );
       }
+
       return data;
     } catch (err) {
       console.error('Error removing group member:', err);
@@ -228,24 +374,32 @@ export const ChatProvider = ({ children }) => {
     }
   };
 
+  // 15. Delete Conversation
   const deleteConversation = async (conversationId) => {
     try {
       await api.delete(`/api/conversations/${conversationId}`);
-      setConversations((prev) => prev.filter((c) => c.id !== conversationId));
+
+      setConversations((prev) =>
+        prev.filter((c) => c.id !== conversationId)
+      );
+
       setMessages((prev) => {
         const copy = { ...prev };
         delete copy[conversationId];
         return copy;
       });
+
       setTypingUsers((prev) => {
         const copy = { ...prev };
         delete copy[conversationId];
         return copy;
       });
-      if (activeConversationId === conversationId || activeIdRef.current === conversationId) {
+
+      if (activeIdRef.current === conversationId) {
         setActiveConversationId(null);
         localStorage.removeItem('chat_active_conv_id');
       }
+
       return true;
     } catch (err) {
       console.error('Error deleting conversation:', err);
@@ -253,41 +407,7 @@ export const ChatProvider = ({ children }) => {
     }
   };
 
-  // 9. Typing Indicators with auto-stop timeout
-  const typingTimeoutRef = useRef(null);
-
-  const startTyping = useCallback(
-    (convId) => {
-      const targetId = convId || activeIdRef.current;
-      if (!socket || !targetId) return;
-
-      socket.emit('typing:start', { conversationId: targetId });
-
-      if (typingTimeoutRef.current) {
-        clearTimeout(typingTimeoutRef.current);
-      }
-
-      typingTimeoutRef.current = setTimeout(() => {
-        stopTyping(targetId);
-      }, 2500);
-    },
-    [socket]
-  );
-
-  const stopTyping = useCallback(
-    (convId) => {
-      const targetId = convId || activeIdRef.current;
-      if (!socket || !targetId) return;
-
-      if (typingTimeoutRef.current) {
-        clearTimeout(typingTimeoutRef.current);
-      }
-      socket.emit('typing:stop', { conversationId: targetId });
-    },
-    [socket]
-  );
-
-  // 10. Real-time Socket Event Listeners
+  // 16. Real-time Socket Events
   useEffect(() => {
     if (!socket) return;
 
@@ -295,67 +415,80 @@ export const ChatProvider = ({ children }) => {
       const currentActive = activeIdRef.current;
       const isCurrent = currentActive === message.conversationId;
 
-      // Update message list
       setMessages((prev) => {
         const existing = prev[message.conversationId] || [];
-        if (existing.some((m) => m.id === message.id)) return prev;
+
+        if (existing.some((m) => m.id === message.id)) {
+          return prev;
+        }
+
         return {
           ...prev,
           [message.conversationId]: [...existing, message]
         };
       });
 
-      // Update conversations list (last message & unread badge)
       setConversations((prev) => {
         const updated = prev.map((conv) => {
-          if (conv.id === message.conversationId) {
-            const isMine = message.senderId === user?.id;
-            const newUnread = isCurrent || isMine ? 0 : (conv.unreadCount || 0) + 1;
-            return {
-              ...conv,
-              lastMessage: {
-                id: message.id,
-                text: message.text,
-                senderId: message.senderId,
-                senderName: message.sender?.fullName || message.sender?.username,
-                createdAt: message.createdAt
-              },
-              unreadCount: newUnread,
-              updatedAt: message.createdAt
-            };
-          }
-          return conv;
+          if (conv.id !== message.conversationId) return conv;
+
+          const isMine = message.senderId === user?.id;
+
+          return {
+            ...conv,
+            lastMessage: {
+              id: message.id,
+              text: message.text,
+              senderId: message.senderId,
+              senderName:
+                message.sender?.fullName ||
+                message.sender?.username,
+              createdAt: message.createdAt
+            },
+            unreadCount:
+              isCurrent || isMine
+                ? 0
+                : (conv.unreadCount || 0) + 1,
+            updatedAt: message.createdAt
+          };
         });
 
-        // Reorder conversations with newest message first
         return updated.sort((a, b) => {
-          const timeA = a.lastMessage?.createdAt ? new Date(a.lastMessage.createdAt) : new Date(a.updatedAt);
-          const timeB = b.lastMessage?.createdAt ? new Date(b.lastMessage.createdAt) : new Date(b.updatedAt);
+          const timeA = a.lastMessage?.createdAt
+            ? new Date(a.lastMessage.createdAt)
+            : new Date(a.updatedAt);
+
+          const timeB = b.lastMessage?.createdAt
+            ? new Date(b.lastMessage.createdAt)
+            : new Date(b.updatedAt);
+
           return timeB - timeA;
         });
       });
 
-      // If active conversation, clear unread on server
       if (isCurrent && message.senderId !== user?.id) {
-        api.post(`/api/conversations/${message.conversationId}/read`).catch(() => {});
+        api.post(
+          `/api/conversations/${message.conversationId}/read`
+        ).catch(() => {});
       }
 
-      // Clear typing indicator for sender
-      setTypingUsers((prev) => {
-        const list = prev[message.conversationId] || [];
-        return {
-          ...prev,
-          [message.conversationId]: list.filter((u) => u.id !== message.senderId)
-        };
-      });
+      setTypingUsers((prev) => ({
+        ...prev,
+        [message.conversationId]: (
+          prev[message.conversationId] || []
+        ).filter((u) => u.id !== message.senderId)
+      }));
     };
 
     const handleUpdatedMessage = ({ message }) => {
       setMessages((prev) => {
         const list = prev[message.conversationId] || [];
+
         return {
           ...prev,
-          [message.conversationId]: list.map((m) => (m.id === message.id ? message : m))
+          [message.conversationId]: list.map((m) =>
+            m.id === message.id ? message : m
+          )
         };
       });
     };
@@ -363,39 +496,57 @@ export const ChatProvider = ({ children }) => {
     const handleDeletedMessage = ({ message }) => {
       setMessages((prev) => {
         const list = prev[message.conversationId] || [];
+
         return {
           ...prev,
-          [message.conversationId]: list.map((m) => (m.id === message.id ? message : m))
+          [message.conversationId]: list.map((m) =>
+            m.id === message.id ? message : m
+          )
         };
       });
     };
 
     const handleConversationCreated = ({ conversation }) => {
       setConversations((prev) => {
-        const exists = prev.some((c) => c.id === conversation.id);
-        if (exists) return prev;
+        if (prev.some((c) => c.id === conversation.id)) {
+          return prev;
+        }
+
         return [conversation, ...prev];
       });
-      socket.emit('conversation:join', { conversationId: conversation.id });
+
+      socket.emit('conversation:join', {
+        conversationId: conversation.id
+      });
     };
 
     const handleConversationUpdated = ({ conversation }) => {
       setConversations((prev) =>
-        prev.map((c) => (c.id === conversation.id ? conversation : c))
+        prev.map((c) =>
+          c.id === conversation.id ? conversation : c
+        )
       );
     };
 
     const handleConversationRemoved = ({ conversationId }) => {
-      setConversations((prev) => prev.filter((c) => c.id !== conversationId));
+      setConversations((prev) =>
+        prev.filter((c) => c.id !== conversationId)
+      );
+
       if (activeIdRef.current === conversationId) {
         setActiveConversationId(null);
+        localStorage.removeItem('chat_active_conv_id');
       }
     };
 
     const handleTypingStart = ({ conversationId, user: typingUser }) => {
       setTypingUsers((prev) => {
         const currentList = prev[conversationId] || [];
-        if (currentList.some((u) => u.id === typingUser.id)) return prev;
+
+        if (currentList.some((u) => u.id === typingUser.id)) {
+          return prev;
+        }
+
         return {
           ...prev,
           [conversationId]: [...currentList, typingUser]
@@ -404,42 +555,58 @@ export const ChatProvider = ({ children }) => {
     };
 
     const handleTypingStop = ({ conversationId, userId }) => {
-      setTypingUsers((prev) => {
-        const currentList = prev[conversationId] || [];
-        return {
-          ...prev,
-          [conversationId]: currentList.filter((u) => u.id !== userId)
-        };
-      });
+      setTypingUsers((prev) => ({
+        ...prev,
+        [conversationId]: (
+          prev[conversationId] || []
+        ).filter((u) => u.id !== userId)
+      }));
     };
 
-    const handleMessagesRead = ({ conversationId, readerId, readAt }) => {
+    const handleMessagesRead = ({
+      conversationId,
+      readerId,
+      readAt
+    }) => {
       setMessages((prev) => {
         const list = prev[conversationId] || [];
+
         return {
           ...prev,
           [conversationId]: list.map((msg) => {
             if (msg.senderId !== readerId) {
               const readBy = msg.readBy || [];
+
               if (!readBy.some((r) => r.userId === readerId)) {
                 return {
                   ...msg,
-                  readBy: [...readBy, { userId: readerId, readAt }]
+                  readBy: [
+                    ...readBy,
+                    { userId: readerId, readAt }
+                  ]
                 };
               }
             }
+
             return msg;
           })
         };
       });
     };
 
-    const handleMessageReaction = ({ messageId, conversationId, reactions }) => {
+    const handleMessageReaction = ({
+      messageId,
+      conversationId,
+      reactions
+    }) => {
       setMessages((prev) => {
         const list = prev[conversationId] || [];
+
         return {
           ...prev,
-          [conversationId]: list.map((m) => (m.id === messageId ? { ...m, reactions } : m))
+          [conversationId]: list.map((m) =>
+            m.id === messageId ? { ...m, reactions } : m
+          )
         };
       });
     };
@@ -447,21 +614,32 @@ export const ChatProvider = ({ children }) => {
     const handleUserProfileUpdated = ({ user: updatedUser }) => {
       setConversations((prev) =>
         prev.map((conv) => {
-          if (conv.type === 'direct' && conv.otherUser?.id === updatedUser.id) {
+          if (
+            conv.type === 'direct' &&
+            conv.otherUser?.id === updatedUser.id
+          ) {
             return {
               ...conv,
-              otherUser: { ...conv.otherUser, ...updatedUser }
+              otherUser: {
+                ...conv.otherUser,
+                ...updatedUser
+              }
             };
           }
+
           if (conv.type === 'group') {
             const updatedParticipants = conv.participants?.map((p) =>
-              p.id === updatedUser.id ? { ...p, ...updatedUser } : p
+              p.id === updatedUser.id
+                ? { ...p, ...updatedUser }
+                : p
             );
+
             return {
               ...conv,
               participants: updatedParticipants
             };
           }
+
           return conv;
         })
       );
@@ -496,9 +674,17 @@ export const ChatProvider = ({ children }) => {
     };
   }, [socket, user?.id]);
 
-  const activeConversation = conversations.find((c) => c.id === activeConversationId) || null;
-  const activeMessages = activeConversationId ? messages[activeConversationId] || [] : [];
-  const currentTypingUsers = activeConversationId ? typingUsers[activeConversationId] || [] : [];
+  // 17. Active Conversation Data
+  const activeConversation =
+    conversations.find((c) => c.id === activeConversationId) || null;
+
+  const activeMessages = activeConversationId
+    ? messages[activeConversationId] || []
+    : [];
+
+  const currentTypingUsers = activeConversationId
+    ? typingUsers[activeConversationId] || []
+    : [];
 
   return (
     <ChatContext.Provider
@@ -510,6 +696,8 @@ export const ChatProvider = ({ children }) => {
         currentTypingUsers,
         isLoadingConversations,
         isLoadingMessages,
+        canLoadOlderMessages: !!messagePages[activeConversationId]?.hasMore,
+        loadOlderMessages: () => loadOlderMessages(activeConversationId),
         selectConversation,
         sendMessage,
         editMessage,
@@ -533,8 +721,10 @@ export const ChatProvider = ({ children }) => {
 
 export const useChat = () => {
   const context = useContext(ChatContext);
+
   if (!context) {
     throw new Error('useChat must be used within a ChatProvider');
   }
+
   return context;
 };

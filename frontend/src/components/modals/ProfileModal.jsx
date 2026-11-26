@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
+import { api } from '../../api/client';
 
 export const ProfileModal = ({ onClose }) => {
   const { user, updateProfile } = useAuth();
@@ -10,6 +11,27 @@ export const ProfileModal = ({ onClose }) => {
   const [isSaving, setIsSaving] = useState(false);
   const [savedOk, setSavedOk] = useState(false);
   const [error, setError] = useState('');
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [passwordMessage, setPasswordMessage] = useState('');
+  const [isChangingPassword, setIsChangingPassword] = useState(false);
+
+  const handlePasswordChange = async (e) => {
+    e.preventDefault();
+    setPasswordMessage('');
+    setError('');
+    setIsChangingPassword(true);
+    try {
+      const result = await api.post('/api/auth/change-password', { currentPassword, newPassword });
+      setPasswordMessage(result.message);
+      setCurrentPassword('');
+      setNewPassword('');
+    } catch (err) {
+      setError(err.message || 'Failed to change password.');
+    } finally {
+      setIsChangingPassword(false);
+    }
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -85,6 +107,18 @@ export const ProfileModal = ({ onClose }) => {
               maxLength={60}
               required
             />
+          </div>
+
+          <div className="form-group">
+            <h3 className="modal-title">Change password</h3>
+            <label className="form-label" htmlFor="current-password">Current password</label>
+            <input id="current-password" type="password" className="form-input" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} autoComplete="current-password" />
+            <label className="form-label" htmlFor="new-password">New password</label>
+            <input id="new-password" type="password" className="form-input" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} minLength={6} autoComplete="new-password" />
+            {passwordMessage && <p className="form-success">{passwordMessage}</p>}
+            <button type="button" className="btn-secondary" onClick={handlePasswordChange} disabled={isChangingPassword || !currentPassword || newPassword.length < 6}>
+              {isChangingPassword ? 'Updating…' : 'Update password'}
+            </button>
           </div>
 
           {/* Status Message */}
